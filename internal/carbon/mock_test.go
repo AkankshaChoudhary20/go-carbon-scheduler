@@ -78,3 +78,29 @@ func diffHours(a, b float64) float64 {
 	}
 	return d
 }
+
+func TestMockProviderRejectsReversedRange(t *testing.T) {
+	from := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	points, err := (MockProvider{}).Forecast(context.Background(), "GB", from, from.Add(-time.Hour))
+	if err == nil || points != nil {
+		t.Fatalf("expected error and no points, got %v, %v", points, err)
+	}
+}
+
+func TestMockProviderHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	from := time.Now()
+	points, err := (MockProvider{}).Forecast(ctx, "GB", from, from.Add(time.Hour))
+	if err != context.Canceled || points != nil {
+		t.Fatalf("got %v, %v; want no points and cancellation", points, err)
+	}
+}
+
+func TestMockProviderEqualEndpoints(t *testing.T) {
+	from := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	points, err := (MockProvider{}).Forecast(context.Background(), "GB", from, from)
+	if err != nil || len(points) != 1 || !points[0].Time.Equal(from) {
+		t.Fatalf("expected one point at start, got %v, %v", points, err)
+	}
+}

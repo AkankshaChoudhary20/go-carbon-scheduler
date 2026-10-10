@@ -2,6 +2,7 @@ package carbon
 
 import (
 	"context"
+	"fmt"
 	"hash/fnv"
 	"math"
 	"time"
@@ -17,7 +18,13 @@ type MockProvider struct {
 	StepMinutes int
 }
 
-func (m MockProvider) Forecast(_ context.Context, zone string, from, to time.Time) ([]Point, error) {
+func (m MockProvider) Forecast(ctx context.Context, zone string, from, to time.Time) ([]Point, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if to.Before(from) {
+		return nil, fmt.Errorf("mock forecast: end must not precede start")
+	}
 	step := time.Duration(m.StepMinutes) * time.Minute
 	if step <= 0 {
 		step = time.Hour
@@ -37,6 +44,9 @@ func (m MockProvider) Forecast(_ context.Context, zone string, from, to time.Tim
 	// gets at least one point instead of an empty forecast.
 	var points []Point
 	for t := from; !t.After(to); t = t.Add(step) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		points = append(points, eval(t))
 	}
 	if len(points) == 0 || points[len(points)-1].Time.Before(to) {

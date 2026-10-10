@@ -152,3 +152,5 @@ subprocess.
   much cleaner window opens up before its original scheduled time.
 - **Multi-region placement**: for jobs that can run in more than one region,
   pick both the region and the time that minimizes carbon intensity.
+
+The mock forecast rejects ranges whose end precedes their start and honors context cancellation. Equal start/end times produce one sample.
