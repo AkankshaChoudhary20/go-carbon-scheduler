@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -116,5 +117,39 @@ func TestPickStartHonorsEarliestBound(t *testing.T) {
 	}
 	if !pick.Start.Equal(base.Add(6 * time.Hour)) {
 		t.Errorf("Start = %v, want %v (earliest bound should exclude the hour-1 trough)", pick.Start, base.Add(6*time.Hour))
+	}
+}
+
+func TestIrregularForecastUsesElapsedTimeWeights(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var points []carbon.Point
+	for minute := 0; minute < 5; minute++ {
+		points = append(points, carbon.Point{Time: base.Add(time.Duration(minute) * time.Minute), GramsCO2PerKWh: 0})
+	}
+	points = append(points, carbon.Point{Time: base.Add(5 * time.Minute), GramsCO2PerKWh: 100}, carbon.Point{Time: base.Add(time.Hour), GramsCO2PerKWh: 50}, carbon.Point{Time: base.Add(2 * time.Hour), GramsCO2PerKWh: 50})
+	pick, err := PickStart(points, time.Hour, base, base.Add(3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pick.Start.Equal(base.Add(time.Hour)) || pick.WindowAvgGrams != 50 {
+		t.Fatalf("dense short low samples biased selection: %+v", pick)
+	}
+}
+
+func TestInvalidSchedulingWindowsAreRejected(t *testing.T) {
+	now := time.Now()
+	points := []carbon.Point{{Time: now, GramsCO2PerKWh: 10}}
+	for _, duration := range []time.Duration{0, -time.Second} {
+		if _, err := PickStart(points, duration, now, now.Add(time.Hour)); err == nil {
+			t.Fatal("accepted invalid duration")
+		}
+	}
+	if _, err := PickStart(points, time.Minute, now, now.Add(-time.Hour)); err == nil {
+		t.Fatal("accepted reversed window")
+	}
+	for _, value := range []float64{math.NaN(), math.Inf(1), -1} {
+		if _, err := PickStart([]carbon.Point{{Time: now, GramsCO2PerKWh: value}}, time.Minute, now, now.Add(time.Hour)); err == nil {
+			t.Fatal("accepted invalid forecast intensity")
+		}
 	}
 }

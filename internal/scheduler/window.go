@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -22,6 +23,14 @@ type Pick struct {
 // [start, start+duration) window has the lowest average forecasted
 // intensity. Forecast points need not be evenly spaced or pre-sorted.
 func PickStart(forecast []carbon.Point, duration time.Duration, earliest, deadline time.Time) (Pick, error) {
+	if duration <= 0 || deadline.Before(earliest) {
+		return Pick{}, fmt.Errorf("scheduler: invalid duration or deadline")
+	}
+	for _, point := range forecast {
+		if math.IsNaN(point.GramsCO2PerKWh) || math.IsInf(point.GramsCO2PerKWh, 0) || point.GramsCO2PerKWh < 0 {
+			return Pick{}, fmt.Errorf("scheduler: forecast intensity must be finite and nonnegative")
+		}
+	}
 	if len(forecast) == 0 {
 		return Pick{}, fmt.Errorf("scheduler: empty forecast")
 	}
@@ -85,20 +94,29 @@ func PickStart(forecast []carbon.Point, duration time.Duration, earliest, deadli
 	return best, nil
 }
 
-// windowAverage returns the mean intensity of points in [from, to) and how
-// many contributed.
+// windowAverage integrates a piecewise-constant forecast over elapsed time.
+// Samples hold until the next timestamp; edge values cover missing endpoints.
+// points must be sorted by time. The count is the number of contributing segments.
 func windowAverage(points []carbon.Point, from, to time.Time) (float64, int) {
-	sum, n := 0.0, 0
-	for _, p := range points {
-		if !p.Time.Before(from) && p.Time.Before(to) {
-			sum += p.GramsCO2PerKWh
-			n++
-		}
-	}
-	if n == 0 {
+	if len(points) == 0 || !to.After(from) {
 		return 0, 0
 	}
-	return sum / float64(n), n
+	intensity := points[0].GramsCO2PerKWh
+	cursor, weighted, segments := from, 0.0, 0
+	for _, point := range points {
+		if !point.Time.After(from) {
+			intensity = point.GramsCO2PerKWh
+			continue
+		}
+		if !point.Time.Before(to) {
+			break
+		}
+		weighted += intensity * point.Time.Sub(cursor).Seconds()
+		segments++
+		cursor, intensity = point.Time, point.GramsCO2PerKWh
+	}
+	weighted += intensity * to.Sub(cursor).Seconds()
+	return weighted / to.Sub(from).Seconds(), segments + 1
 }
 
 // nearestIntensity returns the intensity of the forecast point closest to t.
