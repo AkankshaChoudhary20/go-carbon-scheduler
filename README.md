@@ -154,3 +154,9 @@ subprocess.
   pick both the region and the time that minimizes carbon intensity.
 
 The mock forecast rejects ranges whose end precedes their start and honors context cancellation. Equal start/end times produce one sample.
+
+## Continuous integration
+
+CI selects the Go version from `go.mod`, runs `go vet ./...` and `go test -race -count=1 ./...`, and builds all packages.
+
+Checks run on pushes and pull requests and can be started manually from the Actions tab. The workflow has read-only repository permissions, cancels superseded runs, and stops after 15 minutes.
