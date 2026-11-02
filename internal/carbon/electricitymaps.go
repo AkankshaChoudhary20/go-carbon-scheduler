@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -46,8 +47,15 @@ func (e ElectricityMapsProvider) Forecast(ctx context.Context, zone string, from
 	horizonHours := int(to.Sub(from).Hours()) + 1
 	horizon := nearestSupportedHorizon(horizonHours)
 
-	url := fmt.Sprintf("%s?zone=%s&horizonHours=%s", base, zone, strconv.Itoa(horizon))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	endpoint, err := url.Parse(base)
+	if err != nil {
+		return nil, fmt.Errorf("electricitymaps: build URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("zone", zone)
+	query.Set("horizonHours", strconv.Itoa(horizon))
+	endpoint.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("electricitymaps: build request: %w", err)
 	}
